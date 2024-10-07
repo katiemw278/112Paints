@@ -1,0 +1,368 @@
+# cmu_graphics must be imported to run this project
+
+from cmu_graphics import *
+import copy, string, itertools, random
+
+# Video Features (LINK TO DEMO: https://youtu.be/PAaDP6wlRcE)
+    # Draw rectangle and show it doesn't draw past the canvas edge
+    # Switch color and draw circle showing it doesn't draw past the canvas edge
+    # Switch color and draw line showing it doesn't draw past the canvas edge
+    # Switch color and place two polygon points then switch color again, remove a point, place two more points, show points can't be drawn off of the canvas then finish the polygon
+    # Switch color and free draw showing it doesn't draw past the canvas edge
+    # Press 'z' to undo and press undo button
+    # Press 'y' to redo and press redo button
+    # Draw some more, press undo button, draw more, then press redo button to show how the old shapes that were drawn before don't appear with the redo button after more shapes are drawn
+
+# Use OOP
+class Rectangle:
+    def __init__(self, color, startX, startY):
+        self.color = color
+        self.startX = startX
+        self.startY = startY
+        self.endX = None
+        self.endY = None
+        self.width = None
+        self.height = None
+    
+    def __eq__(self, other):
+        return (isinstance(other, Rectangle) and self.color==other.color and 
+                self.startX==other.startX and self.startY==other.startY and 
+                self.endX==other.endX and self.endY==other.endY and 
+                self.width==other.width and self.height==other.height and 
+                self.fill==other.fill)
+    
+    def endPoint(self, mouseX, mouseY):
+        if mouseX<75:
+            self.endX = 75
+        elif mouseX>680:
+            self.endX = 680
+        else:
+            self.endX = mouseX
+        if mouseY<50:
+            self.endY = 50
+        elif mouseY>430:
+            self.endY = 430
+        else:
+            self.endY = mouseY
+    
+    def getWidth(self):
+        self.width = abs(self.startX - self.endX)
+    
+    def getHeight(self):
+        self.height = abs(self.startY - self.endY)
+
+class Circle:
+    def __init__(self, color, cx, cy):
+        self.color = color
+        self.cx = cx
+        self.cy = cy
+        self.radius = 0
+    
+    def __eq__(self, other):
+        return isinstance(other, Circle) and self.color==other.color and self.cx==other.cx and self.cy==other.cy and self.radius==other.radius
+        
+    def getRadius(self, mouseX, mouseY):
+        r = abs(mouseX - self.cx)
+        if self.cx+r>680 or self.cx-r<75 or self.cy-r<50 or self.cy+r>430:
+            self.radius = min([abs(680-self.cx), abs(75-self.cx), abs(50-self.cy), abs(430-self.cy)])
+        else:
+            self.radius = r
+
+class Line:
+    def __init__(self, color, startX, startY):
+        self.color = color
+        self.startX = startX
+        self.startY = startY
+        self.endX = None
+        self.endY = None
+    
+    def endPoint(self, mouseX, mouseY):
+        self.endX = mouseX
+        self.endY = mouseY
+
+class Polygon:
+    def __init__(self, color, pointsList):
+        self.color = color
+        self.pointsList = pointsList
+    
+    def __eq__(self, other):
+        return isinstance(other, Polygon) and self.color==other.color and self.pointsList==other.pointsList
+
+class freeDraw:
+    def __init__(self, color, points):
+        self.color = color
+        self.points = points
+    
+    def __eq__(self, other):
+        return isinstance(other, freeDraw) and self.color==other.color and self.points==other.points
+    
+    def addPoint(self, mouseX, mouseY):
+        self.points.append((mouseX, mouseY))
+
+# Write Animation
+def onAppStart(app):
+    app.width = 700
+    app.height = 450
+    app.shapeButtons = [(5, 60), (40, 60), (5, 100), (40, 100), (5, 140)]
+    app.undoRedoButtons = [(5, 180), (40, 180)]
+    app.colorButtons = [(5, 290), (40, 290), (5, 330), (40, 330), (5, 370), (40, 370), (5, 410), (40, 410)]
+    app.colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'black', 'gray']
+    app.selectedButtonIndex = None
+    app.selectedButtonType = None
+    app.selectedColorIndex = 0
+    app.finishedShapes = []
+    app.currShape = []
+    app.undo = []
+    app.polygonPoints = []
+    app.startPolygon = False
+    
+def redrawAll(app):
+    # Screen Initial Set-Up
+    drawRect(0, 0, app.width, app.height, fill='gainsboro')
+    drawRect(75, 50, 605, 380, fill='white')
+    drawLine(0, 50, 700, 50, fill='black')
+    drawLine(75, 50, 75, 450, fill='black')
+    drawLine(75, 430, 680, 430, fill='black')
+    drawLine(680, 50, 680, 430, fill='black')
+    drawLabel('112 Paints', 350, 25, size=30, font='caveat')
+    
+    # Shape Buttons
+    for i in range(len(app.shapeButtons)):
+        if app.selectedButtonType=='shape' and app.selectedButtonIndex==i:
+            borderColor = 'limeGreen'
+        else:
+            borderColor = 'black'
+        x, y = app.shapeButtons[i]
+        drawRect(x, y, 30, 30, fill=None, border=borderColor)
+        
+    # Undo/Redo Buttons
+    for i in range(len(app.undoRedoButtons)):
+        x, y = app.undoRedoButtons[i]
+        drawRect(x, y, 30, 30, fill=None, border='black')
+    
+    # Color Buttons
+    drawLabel('Fill Options', 37, 275, size=13, italic=True)
+    for i in range(len(app.colorButtons)):
+        if app.selectedColorIndex==i:
+            borderColor = 'limeGreen'
+        else:
+            borderColor = 'black'
+        x, y = app.colorButtons[i]
+        drawRect(x, y, 30, 30, fill=app.colors[i], border=borderColor)
+    
+    # Shape Button Icons
+    drawRect(10, 65, 20, 20, fill='darkGray', border='dimGray')
+    drawCircle(55, 75, 10, fill='darkGray', border='dimGray')
+    drawLine(12, 123, 28, 107, lineWidth=2, fill='dimGray')
+    drawPolygon(45, 110, 62, 105, 59, 125, 50, 120, fill='darkGray', border='dimGray')
+    drawLabel('🖉', 20, 155, font='symbols', size=20) # Pencil
+    
+    # Undo/Redo Button Icons
+    drawLabel('z', 11, 204, size=10, fill='dimGray')
+    drawLabel('🠬', 20, 195, font='symbols', size=20) # Left Arrow
+    drawLabel('y', 46, 204, size=10, fill='dimGray')
+    drawLabel('🠮', 55, 195, font='symbols', size=20) # Right Arrow
+    
+    # Draw Finished Shapes
+    for shape in app.finishedShapes:
+        if isinstance(shape, Rectangle):
+            drawRect(shape.startX, shape.startY, shape.width, shape.height, fill=shape.color)
+        elif isinstance(shape, Circle):
+            drawCircle(shape.cx, shape.cy, shape.radius, fill=shape.color)
+        elif isinstance(shape, Line) and shape.endX!=None and shape.endY!=None:
+            drawLine(shape.startX, shape.startY, shape.endX, shape.endY, fill=shape.color)
+        elif isinstance(shape, Polygon):
+            pointsList = pointsNotTuple(shape.pointsList)
+            drawPolygon(*pointsList, fill=shape.color)
+        elif isinstance(shape, freeDraw):
+            for i in range(len(shape.points)-1):
+                x0, y0 = shape.points[i]
+                x1, y1 = shape.points[i+1]
+                drawLine(x0, y0, x1, y1, fill=shape.color)
+    
+    # Draw Polygon Points
+    if app.selectedButtonIndex==3 and app.startPolygon==True:
+        for i in range(len(app.polygonPoints)):
+            if i==0:
+                color = 'darkGreen'
+            else:
+                color = 'red'
+            x, y = app.polygonPoints[i]
+            drawLabel('x', x, y, fill=color)
+    
+    # Drawings In Progress
+    if app.currShape!=[]:
+        if isinstance(app.currShape[0], Rectangle):
+            drawRectangles(app)
+        elif isinstance(app.currShape[0], Circle):
+            drawCircles(app)
+        elif isinstance(app.currShape[0], Line):
+            drawLines(app)
+        elif isinstance(app.currShape[0], freeDraw):
+            for i in range(len(app.currShape[0].points)-1):
+                x0, y0 = app.currShape[0].points[i]
+                x1, y1 = app.currShape[0].points[i+1]
+                drawLine(x0, y0, x1, y1, fill=app.currShape[0].color)
+    
+def drawRectangles(app):
+    if app.currShape[0].endX!=None and app.currShape[0].endY!=None and app.currShape[0].width!=0 and app.currShape[0].height!=0:
+        drawRect(app.currShape[0].startX, app.currShape[0].startY, app.currShape[0].width, app.currShape[0].height, fill=None, border=app.currShape[0].color)
+
+def drawCircles(app):
+    if app.currShape[0].radius!=0:
+        drawCircle(app.currShape[0].cx, app.currShape[0].cy, app.currShape[0].radius, fill=None, border=app.currShape[0].color)
+
+def drawLines(app):
+    if app.currShape[0].endX!=None and app.currShape[0].endY!=None:
+        drawLine(app.currShape[0].startX, app.currShape[0].startY, app.currShape[0].endX, app.currShape[0].endY, fill=app.currShape[0].color)
+
+def drawFreeDraw(app):
+    for i in range(len(app.currShape[0].points)-1):
+        x0, y0 = app.currShape[0].points[i]
+        x1, y1 = app.currShape[0].points[i+1]
+        drawLine(x0, y0, x1, y1, fill=app.currShape[0].color)
+
+def onMousePress(app, mouseX, mouseY):
+    if notInButton(app, mouseX, mouseY) and app.selectedButtonType==None and app.selectedButtonIndex==None:
+        return
+    
+    # Clicking Shape Buttons
+    for i in range(len(app.shapeButtons)):
+        x, y = app.shapeButtons[i]
+        if pointInRect(app, x, y, mouseX, mouseY):
+            app.selectedButtonType = 'shape'
+            app.selectedButtonIndex = i
+    if app.selectedButtonIndex!=3:
+        app.polygonPoints = []
+    
+    # Clicking Undo/Redo Buttons
+    for i in range(len(app.undoRedoButtons)):
+        x, y = app.undoRedoButtons[i]
+        if pointInRect(app, x, y, mouseX, mouseY):
+            app.selectedButtonType = 'undoRedo'
+            app.selectedButtonIndex = i
+    
+    # Undo/Redo Button Action
+    if app.selectedButtonType=='undoRedo' and app.selectedButtonIndex==0 and inUndoButton(app, mouseX, mouseY):
+        app.undo.append(app.finishedShapes.pop())
+    elif app.selectedButtonType=='undoRedo' and app.selectedButtonIndex==1 and inRedoButton(app, mouseX, mouseY):
+        if app.undo!=[]:
+            app.finishedShapes.append(app.undo.pop())
+    
+    # Clicking Color Buttons
+    for i in range(len(app.colorButtons)):
+        x, y = app.colorButtons[i]
+        if pointInRect(app, x, y, mouseX, mouseY):
+            app.selectedColorIndex = i
+    
+    # Drawing On Canvas
+    if allowDraw(app, mouseX, mouseY):
+        app.undo = []
+        # Create Rectangle
+        if app.selectedButtonType=='shape' and app.selectedButtonIndex==0:
+            app.currShape.append(Rectangle(app.colors[app.selectedColorIndex], mouseX, mouseY))
+        # Create Circle
+        elif app.selectedButtonType=='shape' and app.selectedButtonIndex==1:
+            app.currShape.append(Circle(app.colors[app.selectedColorIndex], mouseX, mouseY))
+        # Create Line
+        elif app.selectedButtonType=='shape' and app.selectedButtonIndex==2:
+            app.currShape.append(Line(app.colors[app.selectedColorIndex], mouseX, mouseY))
+        # Create Polygon Points
+        elif app.selectedButtonType=='shape' and app.selectedButtonIndex==3:
+            if app.polygonPoints!=[]:
+                x0, y0 = app.polygonPoints[0]
+                if (mouseX-5)<=x0<=(mouseX+5) and (mouseY-5)<=y0<=(mouseY+5) and len(app.polygonPoints)>=3:
+                    app.finishedShapes.append(Polygon(app.colors[app.selectedColorIndex], app.polygonPoints))
+                    app.polygonPoints = []
+                    app.startPolygon = False
+                    return
+            for point in app.polygonPoints:
+                x, y = point
+                if (mouseX-5)<=x<=(mouseX+5) and (mouseY-5)<=y<=(mouseY+5):
+                    app.polygonPoints.remove((x, y))
+                    return
+            app.polygonPoints.append((mouseX, mouseY))
+            app.startPolygon = True
+        # Create Free Draw
+        elif app.selectedButtonType=='shape' and app.selectedButtonIndex==4:
+            app.currShape.append(freeDraw(app.colors[app.selectedColorIndex], [(mouseX, mouseY)]))
+
+def onMouseDrag(app, mouseX, mouseY):
+    if notInButton(app, mouseX, mouseY) and app.selectedButtonType==None and app.selectedButtonIndex==None:
+        return
+    
+    # Adjust Shapes
+    if app.polygonPoints!=[]:
+        return
+    if allowDraw(app, mouseX, mouseY) and app.currShape!=[]:
+        if isinstance(app.currShape[0], Rectangle):
+            app.currShape[0].endPoint(mouseX, mouseY)
+            app.currShape[0].getWidth()
+            app.currShape[0].getHeight()
+        elif isinstance(app.currShape[0], Circle):
+            app.currShape[0].getRadius(mouseX, mouseY)
+        elif isinstance(app.currShape[0], Line):
+            app.currShape[0].endPoint(mouseX, mouseY)
+        elif isinstance(app.currShape[0], freeDraw):
+            app.currShape[0].addPoint(mouseX, mouseY)
+
+def onMouseRelease(app, mouseX, mouseY):
+    if notInButton(app, mouseX, mouseY) and app.selectedButtonType==None and app.selectedButtonIndex==None:
+        return
+    
+    # Place Shapes Permanently
+    if app.currShape!=[]:
+        app.finishedShapes.append(app.currShape[0])
+        app.currShape = []
+    
+def onKeyPress(app, key):
+    if key=='z':
+        if app.finishedShapes!=[]:
+            app.undo.append(app.finishedShapes.pop())
+    elif key=='y':
+        if app.undo!=[]:
+            app.finishedShapes.append(app.undo.pop())
+
+def pointInRect(app, x, y, mouseX, mouseY):
+    x0, y0 = x, y
+    x1, y1 = x + 30, y + 30
+    return (x0<=mouseX<=x1) and (y0<=mouseY<=y1)
+
+def allowDraw(app, mouseX, mouseY):
+    if 75<=mouseX<=680 and 50<=mouseY<=430:
+        return True
+    return False
+
+def pointsNotTuple(l):
+    result = []
+    for point in l:
+        x, y = point
+        result.append(x)
+        result.append(y)
+    return result
+
+def notInButton(app, mouseX, mouseY):
+    for i in range(len(app.shapeButtons)):
+        x, y = app.shapeButtons[i]
+        if pointInRect(app, x, y, mouseX, mouseY):
+            return False
+    for i in range(len(app.undoRedoButtons)):
+        x, y = app.undoRedoButtons[i]
+        if pointInRect(app, x, y, mouseX, mouseY):
+            return False
+    for i in range(len(app.colorButtons)):
+        x, y = app.colorButtons[i]
+        if pointInRect(app, x, y, mouseX, mouseY):
+            return False
+    return True
+
+def inUndoButton(app, mouseX, mouseY):
+    return (5<=mouseX<=35) and (180<=mouseY<=210)
+    
+def inRedoButton(app, mouseX, mouseY):
+    return (40<=mouseX<=70) and (180<=mouseY<=210)
+
+def main():
+    runApp()
+
+main()
